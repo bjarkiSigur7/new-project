@@ -1,4 +1,6 @@
-# Convex
+# ===== .env.local (Next.js side) =====
+
+# Convex — created automatically by `npx convex dev`
 CONVEX_DEPLOYMENT=
 NEXT_PUBLIC_CONVEX_URL=
 
@@ -6,14 +8,34 @@ NEXT_PUBLIC_CONVEX_URL=
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
 
-# Clerk + Convex Auth (set in Convex Dashboard environment variables)
-# CLERK_JWT_ISSUER_DOMAIN=
+# ===== Convex Dashboard environment variables =====
+# (Settings > Environment Variables on your Convex deployment)
 
-# Webhooks (set in Convex Dashboard environment variables)
-# CLERK_WEBHOOK_SECRET=
+# Clerk + Convex auth
+# CLERK_JWT_ISSUER_DOMAIN=https://your-app.clerk.accounts.dev
+# CLERK_WEBHOOK_SECRET=whsec_...
+
+# The public URL of the Next.js app (used in OAuth/consent redirects + emails)
+# APP_URL=http://localhost:3000
+
+# Microsoft Entra multi-tenant app (see docs/SETUP.md — "Microsoft app registration")
+# MS_CLIENT_ID=
+# MS_CLIENT_SECRET=
+
+# QuickBooks Online app (developer.intuit.com; redirect URI = <convex-site-url>/qbo/callback)
+# QBO_CLIENT_ID=
+# QBO_CLIENT_SECRET=
+# QBO_ENV=sandbox            # or "production"
+
+# Polar billing (merchant of record)
+# POLAR_ORGANIZATION_TOKEN=polar_at_...
 # POLAR_WEBHOOK_SECRET=
+# POLAR_SERVER=sandbox       # or "production"
+# POLAR_PRODUCT_STARTER_MONTHLY=   # Polar product id for Starter $79/mo
+# POLAR_PRODUCT_PRO_MONTHLY=       # Polar product id for Pro $149/mo
+# POLAR_PRODUCT_SCALE_MONTHLY=     # Polar product id for Scale $249/mo
 
-# Polar (set in Convex Dashboard environment variables)
-# POLAR_ORGANIZATION_TOKEN=
-# POLAR_SERVER=sandbox
-# POLAR_PRODUCT_PREMIUM_MONTHLY=
+# Transactional email for the monthly pre-billing digest (optional; digests
+# are skipped silently when unset)
+# RESEND_API_KEY=
+# EMAIL_FROM=TrueUp <digest@updates.yourdomain.com>

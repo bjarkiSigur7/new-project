@@ -1,5 +1,5 @@
 import { action } from "./_generated/server";
-import { polar } from "./example";
+import { polar } from "./billing";
 
 export const syncProducts = action({
   args: {},
@@ -7,5 +7,3 @@ export const syncProducts = action({
     await polar.syncProducts(ctx);
   },
 });
-
-

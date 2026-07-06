@@ -3,19 +3,98 @@ import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { Webhook } from "svix";
 import type { WebhookEvent } from "@clerk/nextjs/server";
-import { polar } from "./example";
+import { polar } from "./billing";
+import type { Id } from "./_generated/dataModel";
 
 const http = httpRouter();
 
-// Register Polar webhook handler at /polar/events
+// Polar subscription webhooks at /polar/events
 polar.registerRoutes(http);
 
+const appUrl = () => process.env.APP_URL ?? "http://localhost:3000";
+
+function redirect(to: string): Response {
+  return new Response(null, { status: 302, headers: { Location: to } });
+}
+
+// Microsoft admin-consent redirect: the client's Global Admin lands here
+// after approving (or declining) the TrueUp app in their tenant.
+http.route({
+  path: "/ms/consent-callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const state = url.searchParams.get("state") ?? "";
+    const granted = url.searchParams.get("admin_consent") === "True";
+    const error = url.searchParams.get("error_description");
+
+    const stateRow = await ctx.runMutation(internal.tenants.consumeOauthState, {
+      state,
+      provider: "ms_consent",
+    });
+    if (!stateRow?.tenantDocId) {
+      return redirect(`${appUrl()}/onboarding?consent=invalid`);
+    }
+
+    await ctx.runMutation(internal.tenants.markConsentResult, {
+      tenantDocId: stateRow.tenantDocId,
+      ok: granted,
+      detail: granted ? undefined : (error ?? "Admin consent was declined"),
+    });
+
+    if (granted) {
+      await ctx.scheduler.runAfter(0, internal.sync.syncTenant, {
+        tenantDocId: stateRow.tenantDocId,
+      });
+      return redirect(`${appUrl()}/onboarding?consent=success`);
+    }
+    return redirect(`${appUrl()}/onboarding?consent=declined`);
+  }),
+});
+
+// QuickBooks OAuth callback.
+http.route({
+  path: "/qbo/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const realmId = url.searchParams.get("realmId");
+    const state = url.searchParams.get("state") ?? "";
+    const error = url.searchParams.get("error");
+
+    if (error || !code || !realmId) {
+      return redirect(`${appUrl()}/onboarding?qbo=declined`);
+    }
+
+    const stateRow = await ctx.runMutation(internal.tenants.consumeOauthState, {
+      state,
+      provider: "qbo",
+    });
+    if (!stateRow) {
+      return redirect(`${appUrl()}/onboarding?qbo=invalid`);
+    }
+
+    try {
+      await ctx.runAction(internal.qbo.exchangeCode, {
+        code,
+        realmId,
+        workspaceId: stateRow.workspaceId as Id<"workspaces">,
+      });
+    } catch {
+      return redirect(`${appUrl()}/onboarding?qbo=error`);
+    }
+    return redirect(`${appUrl()}/onboarding?qbo=connected`);
+  }),
+});
+
+// Clerk user-sync webhook.
 http.route({
   path: "/clerk/webhook",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
-    
+
     if (!webhookSecret) {
       console.error("Missing CLERK_WEBHOOK_SECRET");
       return new Response("Server configuration error", { status: 500 });
@@ -34,8 +113,6 @@ http.route({
       const body = JSON.stringify(payload);
 
       const wh = new Webhook(webhookSecret);
-      
-      // Verify the webhook
       const evt = wh.verify(body, {
         "svix-id": svixId,
         "svix-timestamp": svixTimestamp,
@@ -43,57 +120,38 @@ http.route({
       }) as WebhookEvent;
 
       const eventType = evt.type;
-      console.log("Webhook event type:", eventType);
 
-      if (eventType === "user.created") {
-        const { id, first_name, last_name, email_addresses, image_url, username } = evt.data;
-
-        const name = first_name && last_name 
-          ? `${first_name} ${last_name}`.trim()
-          : username || 'Anonymous';
-        
+      if (eventType === "user.created" || eventType === "user.updated") {
+        const { id, first_name, last_name, email_addresses, image_url, username } =
+          evt.data;
+        const name =
+          first_name && last_name
+            ? `${first_name} ${last_name}`.trim()
+            : username || "Anonymous";
         const email = email_addresses?.[0]?.email_address || "";
 
-        await ctx.runMutation(internal.users.internalCreateUser, {
-          clerkId: id,
-          name,
-          email,
-          imageUrl: image_url,
-        });
-
-        return new Response("User created", { status: 200 });
-      }
-
-      if (eventType === "user.updated") {
-        const { id, first_name, last_name, email_addresses, image_url, username } = evt.data;
-
-        const name = first_name && last_name 
-          ? `${first_name} ${last_name}`.trim()
-          : username || 'Anonymous';
-        
-        const email = email_addresses?.[0]?.email_address || "";
-
-        await ctx.runMutation(internal.users.internalUpdateUser, {
-          clerkId: id,
-          name,
-          email,
-          imageUrl: image_url,
-        });
-
-        return new Response("User updated", { status: 200 });
+        if (eventType === "user.created") {
+          await ctx.runMutation(internal.users.internalCreateUser, {
+            clerkId: id,
+            name,
+            email,
+            imageUrl: image_url,
+          });
+        } else {
+          await ctx.runMutation(internal.users.internalUpdateUser, {
+            clerkId: id,
+            name,
+            email,
+            imageUrl: image_url,
+          });
+        }
+        return new Response("OK", { status: 200 });
       }
 
       if (eventType === "user.deleted") {
         const { id } = evt.data;
-
-        if (!id) {
-          return new Response("User ID not found", { status: 400 });
-        }
-
-        await ctx.runMutation(internal.users.internalDeleteUser, {
-          clerkId: id,
-        });
-
+        if (!id) return new Response("User ID not found", { status: 400 });
+        await ctx.runMutation(internal.users.internalDeleteUser, { clerkId: id });
         return new Response("User deletion noted", { status: 200 });
       }
 
