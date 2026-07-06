@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { UserButton } from "@clerk/nextjs";
@@ -15,7 +16,11 @@ import {
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+const NAV: Array<{
+  href: Route;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/mapping", label: "Mapping", icon: GitCompareArrows },
   { href: "/renewals", label: "Renewals", icon: CalendarClock },
@@ -124,7 +129,7 @@ function NavLink({
   active,
   highlight,
 }: {
-  href: string;
+  href: Route;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   active: boolean;

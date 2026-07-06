@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { getWorkspaceForUser, requireUser, requireWorkspace } from "./lib/access";
+import { getWorkspaceForUser, requireWorkspace } from "./lib/access";
 
 const TRIAL_MS = 14 * 24 * 60 * 60 * 1000;
 
